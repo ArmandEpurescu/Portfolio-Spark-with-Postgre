@@ -1,0 +1,51 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import when
+
+# Configurarea SparkSession cu driverul JDBC
+spark = SparkSession.builder \
+    .appName("CSV to Database Pipeline") \
+    .config("spark.jars", "C:/Users/Armand Epurescu/Downloads/postgresql-42.6.2.jar") \
+    .getOrCreate()
+
+# 1. Citirea fișierului CSV
+df = spark.read.csv("D:/import_csv/AppleStore.csv", header=True, inferSchema=True)
+df.show()
+
+# 2. Încărcarea datelor în baza de date intermediară (Overwrite)
+df.write \
+  .format("jdbc") \
+  .mode("overwrite") \
+  .option("url", "jdbc:postgresql://localhost:5432/intermediate_db") \
+  .option("dbtable", "raw_data") \
+  .option("user", "tatal") \
+  .option("password", "1997Armand22") \
+  .option("driver", "org.postgresql.Driver") \
+  .save()
+
+# 3. Citirea datelor din baza de date intermediară și aplicarea transformărilor
+raw_df = spark.read \
+  .format("jdbc") \
+  .option("url", "jdbc:postgresql://localhost:5432/intermediate_db") \
+  .option("dbtable", "raw_data") \
+  .option("user", "tatal") \
+  .option("password", "1997Armand22") \
+  .option("driver", "org.postgresql.Driver") \
+  .load()
+
+transformed_df = raw_df.withColumn(
+    "price_category",
+    when(raw_df["price"] == 0, "Free").otherwise("Paid")
+).select("id", "track_name", "user_rating", "prime_genre", "price_category")
+
+transformed_df.show()
+
+# 4. Încărcarea datelor transformate în baza de date de destinație (Overwrite)
+transformed_df.write \
+  .format("jdbc") \
+  .mode("overwrite") \
+  .option("url", "jdbc:postgresql://localhost:5432/destination_db") \
+  .option("dbtable", "transformed_data") \
+  .option("user", "tatal") \
+  .option("password", "1997Armand22") \
+  .option("driver", "org.postgresql.Driver") \
+  .save()
